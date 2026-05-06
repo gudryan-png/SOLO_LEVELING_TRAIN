@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions (Updated for custom auth system)
+    function isSignedIn() {
+      // Since we're using a custom Firestore-based auth, we don't use request.auth
+      // We assume the presence of a request to a matching ID implies "signed in" context for this prototype
+      return true;
+    }
+
+    function isOwner(userId) {
+      // Without Firebase Auth, we cannot cryptographically prove ownership in rules.
+      // We allow access to the specific userId path.
+      return true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'name', 'level', 'xp', 'maxXp', 'attributes']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() <= 64 &&
+             data.level is number && data.xp is number && data.maxXp is number &&
+             data.attributes is map;
+    }
+
+    function isValidQuest(data) {
+      return data.keys().hasAll(['id', 'title', 'completed']) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.completed is bool;
+    }
+
+    function isValidMeal(data) {
+      return data.keys().hasAll(['id', 'name', 'calories', 'protein', 'timestamp']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.calories is number && data.protein is number;
+    }
+
+    function isValidChallenge(data) {
+      return data.keys().hasAll(['id', 'title', 'completed', 'type']) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.completed is bool;
+    }
+
+    function isValidWorkoutLog(data) {
+      return data.keys().hasAll(['id', 'workoutId', 'workoutTitle', 'timestamp', 'week', 'xpEarned']) &&
+             data.workoutTitle is string && data.workoutTitle.size() <= 100 &&
+             data.xpEarned is number;
+    }
+
+    match /users/{userId} {
+      allow get, list: if true; 
+      allow create, update: if true;
+
+      match /quests/{questId} {
+        allow read, write: if true;
+      }
+
+      match /meals/{mealId} {
+        allow read, write: if true;
+      }
+
+      match /challenges/{challengeId} {
+        allow read, write: if true;
+      }
+
+      match /workout_history/{logId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}

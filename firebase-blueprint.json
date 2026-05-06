@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile data including RPG status and system progression",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "number" },
+        "xp": { "type": "number" },
+        "maxXp": { "type": "number" },
+        "pointsToDistribute": { "type": "number" },
+        "attributes": {
+          "type": "object",
+          "properties": {
+            "strength": { "type": "number" },
+            "vitality": { "type": "number" },
+            "agility": { "type": "number" },
+            "intelligence": { "type": "number" }
+          }
+        },
+        "unlockedWorkoutIndex": { "type": "number" },
+        "week": { "type": "number" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "peito": { "type": "number" },
+            "triceps": { "type": "number" },
+            "costas": { "type": "number" },
+            "biceps": { "type": "number" },
+            "ombro": { "type": "number" },
+            "perna": { "type": "number" },
+            "total": { "type": "number" }
+          }
+        },
+        "currentTitleId": { "type": "string" },
+        "customWorkouts": { "type": "array" },
+        "inventory": { "type": "array" },
+        "skills": { "type": "array" },
+        "securityQuestion": { "type": "string" },
+        "securityAnswer": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "name", "level", "xp", "maxXp", "attributes"]
+    },
+    "Quest": {
+      "title": "Daily Quest",
+      "description": "Daily quest for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "xpReward": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "rarity": { "type": "string" },
+        "category": { "type": "string" },
+        "icon": { "type": "string" }
+      },
+      "required": ["id", "title", "completed"]
+    },
+    "Meal": {
+      "title": "Meal Entry",
+      "description": "Nutrition entry for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "calories": { "type": "number" },
+        "protein": { "type": "number" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "name", "calories", "protein", "timestamp"]
+    },
+    "Challenge": {
+      "title": "Weekly Challenge",
+      "description": "A weekly or boss challenge",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "xpReward": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "title", "completed", "type"]
+    },
+    "WorkoutLog": {
+      "title": "Workout Log",
+      "description": "Historical log of a completed workout",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workoutId": { "type": "string" },
+        "workoutTitle": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "week": { "type": "number" },
+        "xpEarned": { "type": "number" }
+      },
+      "required": ["id", "workoutId", "workoutTitle", "timestamp", "week", "xpEarned"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile"
+    },
+    "/users/{userId}/quests/{questId}": {
+      "schema": "Quest",
+      "description": "Daily quests for the user"
+    },
+    "/users/{userId}/meals/{mealId}": {
+      "schema": "Meal",
+      "description": "Meals tracked by the user"
+    },
+    "/users/{userId}/challenges/{challengeId}": {
+      "schema": "Challenge",
+      "description": "Challenges for the user"
+    },
+    "/users/{userId}/workout_history/{logId}": {
+      "schema": "WorkoutLog",
+      "description": "History of user workouts"
+    }
+  }
+}
