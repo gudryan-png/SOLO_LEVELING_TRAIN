@@ -100,6 +100,45 @@
         "xpEarned": { "type": "number" }
       },
       "required": ["id", "workoutId", "workoutTitle", "timestamp", "week", "xpEarned"]
+    },
+    "Friend": {
+      "title": "Friend",
+      "description": "User's friend information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "number" },
+        "currentTitleId": { "type": "string" },
+        "stats": { "type": "object" }
+      },
+      "required": ["userId", "name", "level"]
+    },
+    "FriendRequest": {
+      "title": "Friend Request",
+      "description": "Request to connect with another user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toUserId": { "type": "string" },
+        "status": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "fromUserId", "toUserId", "status"]
+    },
+    "WalkingLog": {
+      "title": "Walking Log",
+      "description": "Log of a walking session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "distance": { "type": "number" },
+        "timestamp": { "type": "string" },
+        "xpEarned": { "type": "number" }
+      },
+      "required": ["id", "distance", "timestamp", "xpEarned"]
     }
   },
   "firestore": {
@@ -122,6 +161,18 @@
     "/users/{userId}/workout_history/{logId}": {
       "schema": "WorkoutLog",
       "description": "History of user workouts"
+    },
+    "/users/{userId}/friends/{friendId}": {
+      "schema": "Friend",
+      "description": "List of friends"
+    },
+    "/users/{userId}/friend_requests/{requestId}": {
+      "schema": "FriendRequest",
+      "description": "Friend requests received"
+    },
+    "/users/{userId}/walking_history/{walkId}": {
+      "schema": "WalkingLog",
+      "description": "History of user walks"
     }
   }
 }

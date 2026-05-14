@@ -30,6 +30,7 @@ export interface Meal {
   protein: number;
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   timestamp: string;
+  recipe?: string;
 }
 
 export interface Challenge {
@@ -107,6 +108,30 @@ export interface WorkoutLog {
   xpEarned: number;
 }
 
+export interface Friend {
+  userId: string;
+  name: string;
+  level: number;
+  currentTitleId: string;
+  stats: WorkoutStats;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromUserId: string;
+  fromName: string;
+  toUserId: string;
+  status: 'pending' | 'accepted';
+  timestamp: string;
+}
+
+export interface WalkingLog {
+  id: string;
+  distance: number; // in km
+  timestamp: string;
+  xpEarned: number;
+}
+
 export interface HunterStatus {
   name: string;
   level: number;
@@ -122,4 +147,5 @@ export interface HunterStatus {
   customWorkouts: Workout[];
   inventory: string[];
   skills: Skill[];
+  goal: 'muscle_gain' | 'weight_gain' | 'weight_loss' | 'maintenance';
 }

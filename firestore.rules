@@ -56,6 +56,21 @@ service cloud.firestore {
              data.xpEarned is number;
     }
 
+    function isValidFriend(data) {
+      return data.keys().hasAll(['userId', 'name', 'level']) &&
+             data.userId is string && data.name is string;
+    }
+
+    function isValidFriendRequest(data) {
+      return data.keys().hasAll(['id', 'fromUserId', 'fromName', 'toUserId', 'status', 'timestamp']) &&
+             data.fromUserId is string && data.toUserId is string && data.status is string;
+    }
+
+    function isValidWalkingLog(data) {
+      return data.keys().hasAll(['id', 'distance', 'timestamp', 'xpEarned']) &&
+             data.distance is number && data.xpEarned is number;
+    }
+
     match /users/{userId} {
       allow get, list: if true; 
       allow create, update: if true;
@@ -73,6 +88,18 @@ service cloud.firestore {
       }
 
       match /workout_history/{logId} {
+        allow read, write: if true;
+      }
+
+      match /friends/{friendId} {
+        allow read, write: if true;
+      }
+
+      match /friend_requests/{requestId} {
+        allow read, write: if true;
+      }
+
+      match /walking_history/{walkId} {
         allow read, write: if true;
       }
     }

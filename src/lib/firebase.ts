@@ -23,7 +23,6 @@ export async function withFirestoreRetry<T>(operation: () => Promise<T>, maxRetr
       const isOfflineError = err.message?.includes('offline') || err.code === 'unavailable';
       if (isOfflineError && i < maxRetries - 1) {
         console.warn(`Firestore offline, retry ${i + 1}/${maxRetries}...`);
-        // Use a longer exponential backoff for offline errors
         await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
         continue;
       }
@@ -31,6 +30,42 @@ export async function withFirestoreRetry<T>(operation: () => Promise<T>, maxRetr
     }
   }
   throw lastError;
+}
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error details: ', JSON.stringify(errInfo));
+  // Not throwing to avoid breaking entire app if a background listener fails, 
+  // but enough for the agent to see in logs.
 }
 
 async function testConnection() {

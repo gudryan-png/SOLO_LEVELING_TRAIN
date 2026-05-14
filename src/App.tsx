@@ -49,12 +49,17 @@ import {
   Calendar,
   Clock,
   Pizza,
-  Apple
+  Apple,
+  Bell,
+  ScrollText,
+  Home,
+  Sparkles
 } from 'lucide-react';
-import { HunterStatus, Quest, Exercise, Attributes, Workout, Title, WorkoutStats, InventoryItem, Skill, Meal, Challenge, WorkoutLog } from './types.ts';
+import { HunterStatus, Quest, Exercise, Attributes, Workout, Title, WorkoutStats, InventoryItem, Skill, Meal, Challenge, WorkoutLog, Friend, FriendRequest, WalkingLog } from './types.ts';
 import { SPECIAL_SKILLS, SKILL_FRIENDS, SPECIAL_ITEMS, TITLES } from './constants.ts';
+import { getMealRecommendations } from './services/geminiService.ts';
 import AuthScreen from './components/AuthScreen.tsx';
-import { auth, db, withFirestoreRetry } from './lib/firebase';
+import { auth, db, withFirestoreRetry, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, writeBatch, deleteDoc } from 'firebase/firestore';
 
@@ -85,7 +90,8 @@ const INITIAL_STATUS: HunterStatus = {
   currentTitleId: 'none',
   customWorkouts: [],
   inventory: [],
-  skills: SPECIAL_SKILLS
+  skills: SPECIAL_SKILLS,
+  goal: 'maintenance'
 };
 
 const GET_WORKOUTS_FOR_WEEK = (week: number): Workout[] => {
@@ -323,92 +329,439 @@ const getDailyQuests = (count = 2): Quest[] => {
   return shuffled.slice(0, count).map(q => ({ ...q, completed: false }));
 };
 
-const NutritionSection = ({ meals, onAddMeal, onRemoveMeal }: { 
+const NutritionSection = ({ 
+  meals, 
+  goal,
+  onAddMeal, 
+  onRemoveMeal,
+  onUpdateGoal
+}: { 
   meals: Meal[], 
-  onAddMeal: (name: string, cal: number, pro: number, type: Meal['type']) => void,
-  onRemoveMeal: (id: string) => void
+  goal: HunterStatus['goal'],
+  onAddMeal: (name: string, cal: number, pro: number, type: Meal['type'], recipe?: string) => void,
+  onRemoveMeal: (id: string) => void,
+  onUpdateGoal: (goal: HunterStatus['goal']) => void
 }) => {
   const [name, setName] = useState('');
   const [cal, setCal] = useState('');
   const [pro, setPro] = useState('');
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<{name: string, recipe: string} | null>(null);
 
   const totalCal = meals.reduce((acc, m) => acc + m.calories, 0);
   const totalPro = meals.reduce((acc, m) => acc + m.protein, 0);
 
+  const fetchRecommendations = async () => {
+    setLoadingAi(true);
+    const recs = await getMealRecommendations(goal);
+    setRecommendations(recs);
+    setLoadingAi(false);
+  };
+
+  useEffect(() => {
+    if (goal) fetchRecommendations();
+  }, [goal]);
+
+  const goalLabels: Record<string, string> = {
+    muscle_gain: 'Ganho de Massa',
+    weight_gain: 'Aumento de Peso',
+    weight_loss: 'Perda de Peso',
+    maintenance: 'Manutenção'
+  };
+
   return (
-    <section className="system-window !border-amber-500/50 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[80px] -z-10" />
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-amber-500 font-black uppercase italic tracking-tighter text-xl flex items-center gap-2">
-          <Utensils size={20} className="fill-amber-500" /> Cozinha do Monarca
-        </h3>
-        <div className="flex gap-2">
-           <div className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/30 px-2 py-0.5 rounded font-black italic">
-             {totalCal} KCAL
-           </div>
-           <div className="text-[10px] bg-blue-500/10 text-blue-500 border border-blue-500/30 px-2 py-0.5 rounded font-black italic">
-             {totalPro}g PROTEÍNA
-           </div>
+    <section className="relative min-h-[80vh] flex flex-col gap-8 pb-12">
+      {/* Background Decor */}
+      <div className="absolute inset-0 bg-amber-500/5 [mask-image:radial-gradient(ellipse_at_center,transparent,black)] -z-10 pointer-events-none" />
+      
+      {/* HEADER BAR */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-black/40 p-6 rounded-2xl border border-amber-500/20 backdrop-blur-xl">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30">
+            <Utensils size={32} className="text-amber-500" />
+          </div>
+          <div>
+            <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2">
+              Cozinha do Monarca
+            </h3>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Atelier de Suprimentos & Alquimia Nutricional</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">Consumo do Ciclo</span>
+            <div className="flex gap-3">
+               <div className="text-xl font-black text-amber-500 italic drop-shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                 {totalCal} <span className="text-[10px] uppercase ml-1 opacity-70">Kcal</span>
+               </div>
+               <div className="text-xl font-black text-blue-400 italic drop-shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+                 {totalPro} <span className="text-[10px] uppercase ml-1 opacity-70">g Prot</span>
+               </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <input 
-              placeholder="Refeição"
-              className="flex-1 bg-black/40 border border-slate-800 rounded px-3 py-2 text-xs focus:border-amber-500 outline-none transition-all"
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        {/* LEFT COLUMN: REGISTRATION & GOAL */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="system-window !border-amber-500/30 p-6 bg-black/60 shadow-2xl">
+            <div className="text-xs text-amber-500 font-black uppercase mb-4 tracking-widest flex items-center gap-2">
+              <FlaskConical size={14} /> Definir Objetivo Atual
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(goalLabels).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => onUpdateGoal(key as any)}
+                  className={`px-3 py-3 rounded-xl text-[10px] font-black uppercase italic border transition-all duration-300 ${
+                    goal === key 
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]' 
+                      : 'bg-black/40 text-slate-500 border-slate-800 hover:border-amber-500/50 hover:bg-black/60'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-2">
-            <input 
-              placeholder="Kcal"
-              type="number"
-              className="w-20 bg-black/40 border border-slate-800 rounded px-3 py-2 text-xs focus:border-amber-500 outline-none transition-all"
-              value={cal}
-              onChange={e => setCal(e.target.value)}
-            />
-            <input 
-              placeholder="Prot (g)"
-              type="number"
-              className="w-20 bg-black/40 border border-slate-800 rounded px-3 py-2 text-xs focus:border-amber-500 outline-none transition-all"
-              value={pro}
-              onChange={e => setPro(e.target.value)}
-            />
-            <button 
-              onClick={() => {
-                if (name && cal && pro) {
-                  onAddMeal(name, parseInt(cal), parseInt(pro), 'lunch');
-                  setName(''); setCal(''); setPro('');
-                }
-              }}
-              className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded text-[10px] font-black uppercase italic transition-all shadow-lg shadow-amber-600/20"
-            >
-              Adicionar
-            </button>
+
+          <div className="system-window !border-slate-800/50 p-6 bg-black/60 shadow-2xl">
+            <div className="text-xs text-slate-400 font-black uppercase mb-4 tracking-widest flex items-center gap-2">
+              <Pizza size={14} /> Registrar Refeição Manual
+            </div>
+            <div className="space-y-3">
+              <div className="group relative">
+                <input 
+                  placeholder="Nome do Alimento / Refeição"
+                  className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none transition-all italic"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <input 
+                  placeholder="Kcal"
+                  type="number"
+                  className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none transition-all italic"
+                  value={cal}
+                  onChange={e => setCal(e.target.value)}
+                />
+                <input 
+                  placeholder="Proteína (g)"
+                  type="number"
+                  className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none transition-all italic"
+                  value={pro}
+                  onChange={e => setPro(e.target.value)}
+                />
+              </div>
+              <button 
+                onClick={() => {
+                  if (name && cal && pro) {
+                    onAddMeal(name, parseInt(cal), parseInt(pro), 'lunch');
+                    setName(''); setCal(''); setPro('');
+                  }
+                }}
+                disabled={!name || !cal || !pro}
+                className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl text-xs font-black uppercase italic transition-all shadow-lg shadow-amber-600/20 mt-2"
+              >
+                Injetar no Metabolismo
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="max-h-[150px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-          {meals.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-slate-700 uppercase font-black italic text-[10px]">
-              Nenhuma refeição registrada
+        {/* MIDDLE COLUMN: AI SUGGESTIONS */}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="system-window !border-blue-500/30 p-6 bg-black/60 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              <Sparkles size={120} className="text-blue-500" />
             </div>
-          ) : (
-            meals.map(meal => (
-              <div key={meal.id} className="flex justify-between items-center bg-white/5 border border-white/5 p-2 rounded group/meal">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-white uppercase italic leading-none">{meal.name}</span>
-                  <span className="text-[8px] text-slate-500 font-bold uppercase mt-1">{meal.calories} kcal • {meal.protein}g P</span>
+            
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col">
+                <h4 className="text-blue-400 font-black uppercase italic tracking-widest flex items-center gap-2 text-lg">
+                   <Zap size={20} className="animate-pulse" /> Sabedoria do Portal
+                </h4>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Recomendações customizadas pelo sistema</p>
+              </div>
+              <button 
+                onClick={fetchRecommendations}
+                className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-black uppercase italic transition-all flex items-center gap-2"
+              >
+                <RefreshCw size={14} className={loadingAi ? 'animate-spin' : ''} /> {loadingAi ? 'Invocando...' : 'Atualizar Portal'}
+              </button>
+            </div>
+
+            {loadingAi ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-4 border border-dashed border-blue-500/20 rounded-2xl bg-blue-500/5">
+                <div className="relative">
+                   <RefreshCw size={48} className="animate-spin text-blue-500 opacity-50" />
+                   <div className="absolute inset-0 flex items-center justify-center">
+                     <Zap size={20} className="text-blue-400 animate-pulse" />
+                   </div>
                 </div>
-                <button onClick={() => onRemoveMeal(meal.id)} className="opacity-0 group-hover/meal:opacity-100 text-rose-500 transition-opacity">
-                  <Trash2 size={12} />
+                <div className="text-center">
+                  <span className="text-xs text-blue-400 font-black uppercase italic tracking-widest block mb-1">Processando Dados Biométricos...</span>
+                  <span className="text-[9px] text-slate-600 font-bold uppercase tracking-[0.3em]">Aguarde a resposta do Monarch</span>
+                </div>
+              </div>
+            ) : recommendations.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {recommendations.map((rec, i) => (
+                  <motion.div 
+                    key={i} 
+                    whileHover={{ y: -5 }}
+                    className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl relative overflow-hidden group/rec flex flex-col justify-between min-h-[220px] hover:border-blue-500/50 transition-all shadow-xl"
+                  >
+                     <div className="absolute -top-4 -right-4 w-16 h-16 bg-blue-500/10 blur-xl opacity-0 group-hover/rec:opacity-100 transition-opacity" />
+                     
+                     <div>
+                       <div className="flex justify-between items-start mb-3">
+                         <div className="text-[12px] font-black text-white uppercase italic leading-tight max-w-[80%]">{rec.name}</div>
+                         <div className="bg-blue-500/20 p-1.5 rounded-lg text-blue-400">
+                           <Apple size={14} />
+                         </div>
+                       </div>
+                       <div className="flex gap-2 mb-4">
+                          <span className="text-[8px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-black uppercase">{rec.calories} KCAL</span>
+                          <span className="text-[8px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-black uppercase">{rec.protein}G P</span>
+                       </div>
+                       <p className="text-[10px] text-slate-500 italic leading-snug group-hover/rec:text-slate-300 transition-colors line-clamp-4">{rec.description}</p>
+                     </div>
+
+                     <div className="flex gap-2 mt-6">
+                       <button 
+                         onClick={() => onAddMeal(rec.name, rec.calories, rec.protein, 'lunch', rec.recipe)}
+                         className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-black py-2.5 rounded-xl uppercase italic transition-all shadow-lg shadow-blue-600/10 border border-blue-400/20"
+                       >
+                         Consumir
+                       </button>
+                       <button 
+                         onClick={() => setSelectedRecipe({ name: rec.name, recipe: rec.recipe })}
+                         className="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-all border border-slate-700 flex items-center justify-center shrink-0"
+                       >
+                         <ScrollText size={18} />
+                       </button>
+                     </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-20 text-center border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-4 bg-black/20">
+                 <Zap size={40} className="text-slate-800" />
+                 <div className="flex flex-col gap-1">
+                   <div className="text-slate-700 uppercase font-black italic text-xs tracking-widest">Portal de Sabedoria Inativo</div>
+                   <div className="text-[9px] text-slate-800 font-bold uppercase">Clique em atualizar para consultar o Mentor</div>
+                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="system-window !border-amber-500/20 p-6 bg-black/60 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2">
+                <History size={18} className="text-amber-500" />
+                <h4 className="text-slate-300 font-black uppercase italic tracking-widest text-lg">Grimório de Histórico</h4>
+              </div>
+              <div className="text-[8px] bg-slate-800 px-3 py-1 rounded-full text-slate-500 font-bold uppercase tracking-widest">
+                {meals.length} Registros de Essência
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              {meals.length === 0 ? (
+                <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-700 uppercase font-black italic text-xs text-center px-10 gap-6 border border-dashed border-slate-800 rounded-2xl">
+                  <Utensils size={48} className="opacity-10" />
+                  "A força bruta sozinha não faz um Rei. A nutrição é a fundação da sua majestade."
+                </div>
+              ) : (
+                meals.map(meal => (
+                  <motion.div 
+                    layout
+                    key={meal.id} 
+                    className="bg-white/5 border border-white/5 p-5 rounded-2xl group/meal hover:bg-white/10 hover:border-amber-500/40 transition-all duration-300 relative overflow-hidden"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-white uppercase italic leading-none tracking-tight mb-2">{meal.name}</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <Zap size={10} className="text-amber-500" />
+                            <span className="text-[10px] text-amber-500/80 font-black uppercase">{meal.calories} KCAL</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Activity size={10} className="text-blue-400" />
+                            <span className="text-[10px] text-blue-400/80 font-black uppercase">{meal.protein}G P</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {meal.recipe && (
+                          <button 
+                            onClick={() => setSelectedRecipe({ name: meal.name, recipe: meal.recipe! })}
+                            className="w-10 h-10 flex items-center justify-center bg-amber-500/10 text-amber-500 rounded-xl hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                            title="VerGrimório"
+                          >
+                            <ScrollText size={18} />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => onRemoveMeal(meal.id)} 
+                          className="w-10 h-10 flex items-center justify-center bg-rose-500/5 text-rose-500/30 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all border border-rose-500/10"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-white/5 text-[9px] text-slate-600 font-bold uppercase italic flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Clock size={10} /> Consumido às {new Date(meal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <span className="opacity-40">{new Date(meal.timestamp).toLocaleDateString()}</span>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* RECIPE MODAL */}
+      <AnimatePresence>
+        {selectedRecipe && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-2xl bg-[#0a0a0c] border border-blue-500/30 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(59,130,246,0.2)]"
+            >
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-blue-500/5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400">
+                    <ScrollText size={24} />
+                  </div>
+                  <div>
+                    <h5 className="text-xl font-black text-white uppercase italic tracking-tighter leading-none">Grimório de Alquimia</h5>
+                    <p className="text-[10px] text-blue-400/70 font-bold uppercase tracking-widest mt-1">{selectedRecipe.name}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedRecipe(null)}
+                  className="w-10 h-10 flex items-center justify-center bg-white/5 text-slate-500 hover:text-white rounded-full transition-colors"
+                >
+                  <X size={24} />
                 </button>
               </div>
-            ))
-          )}
+              <div className="p-8 max-h-[65vh] overflow-y-auto custom-scrollbar">
+                <div className="text-[11px] text-slate-400 font-black uppercase mb-6 tracking-[0.2em] flex items-center gap-2 border-l-2 border-blue-500 pl-4 py-1">
+                  Instruções de Preparo & Essências
+                </div>
+                <div className="text-slate-300 text-sm leading-relaxed font-medium whitespace-pre-wrap bg-white/[0.02] p-6 rounded-2xl border border-white/5 italic">
+                  {selectedRecipe.recipe}
+                </div>
+                <div className="mt-8 p-6 bg-gradient-to-r from-blue-600/10 to-transparent border-l-4 border-blue-500 rounded-r-2xl">
+                  <p className="text-xs text-blue-400 leading-relaxed font-black uppercase italic">
+                    "Que esta refeição restaure seu vigor para a próxima dungeon, Caçador. O sistema recompensará sua disciplina."
+                  </p>
+                </div>
+              </div>
+              <div className="p-6 bg-black/60 border-t border-white/5 text-center">
+                <button 
+                  onClick={() => setSelectedRecipe(null)}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase italic rounded-2xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)]"
+                >
+                  Fechar Grimório de Receita
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+};
+
+const WalkingSection = ({ onLogWalking, history }: { onLogWalking: (km: number) => void, history: WalkingLog[] }) => {
+  const [km, setKm] = useState('');
+
+  return (
+    <section className="system-window !border-emerald-500/50 relative overflow-hidden group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[80px] -z-10" />
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-emerald-500 font-black uppercase italic tracking-tighter text-xl flex items-center gap-2">
+          <Wind size={20} className="fill-emerald-500" /> Patrulha e Reconhecimento
+        </h3>
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-black/40 px-2 py-1 border border-slate-800 rounded">Caminhada & Distância</span>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+        <div className="flex-1 w-full">
+          <p className="text-[10px] text-slate-500 uppercase font-black italic tracking-tight mb-3">
+             Hunter, patrulhar perímetros de portais é essencial para sua agilidade e stamina. 
+             Registre sua quilometragem aqui.
+          </p>
+          <div className="flex gap-2">
+            <input 
+              placeholder="Km percorridos"
+              type="number"
+              step="0.1"
+              value={km}
+              onChange={e => setKm(e.target.value)}
+              className="bg-black/40 border border-slate-800 rounded px-4 py-2 text-xs focus:border-emerald-500 outline-none w-full italic"
+            />
+            <button 
+              onClick={() => {
+                const val = parseFloat(km);
+                if (val > 0) {
+                  onLogWalking(val);
+                  setKm('');
+                }
+              }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded text-[10px] font-black uppercase italic transition-all whitespace-nowrap"
+            >
+              Registrar Patrulha
+            </button>
+          </div>
+
+          <div className="mt-6">
+            <div className="text-[8px] text-slate-500 font-black uppercase mb-2 flex justify-between">
+              <span>Últimas Patrulhas</span>
+              <span>{history.length} Missões</span>
+            </div>
+            <div className="max-h-[100px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+              {history.length === 0 ? (
+                <div className="py-4 text-center text-slate-700 uppercase font-black italic text-[9px] border border-dashed border-slate-800 rounded">
+                  Nenhuma patrulha recente
+                </div>
+              ) : (
+                history.slice(0, 5).map(log => (
+                  <div key={log.id} className="flex justify-between items-center bg-white/5 p-2 rounded border border-white/5">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-white italic">{log.distance} KM PERCORRIDOS</span>
+                      <span className="text-[8px] text-emerald-500 font-bold uppercase">{new Date(log.timestamp).toLocaleDateString()}</span>
+                    </div>
+                    <span className="text-[10px] font-black text-emerald-400 italic">+{log.xpEarned} XP</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="w-full md:w-32 h-20 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex flex-col items-center justify-center shrink-0 group-hover:border-emerald-500/50 transition-all">
+           <Wind size={24} className="text-emerald-500 mb-1 animate-pulse" />
+           <div className="text-[8px] text-slate-500 font-black uppercase tracking-tighter text-center">Exploração Ativa</div>
         </div>
       </div>
     </section>
@@ -483,6 +836,11 @@ export default function App() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutLog[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [walkingHistory, setWalkingHistory] = useState<WalkingLog[]>([]);
+  const [showSocialModal, setShowSocialModal] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'kitchen'>('dashboard');
 
   // Auth & Session Listener
   useEffect(() => {
@@ -540,7 +898,7 @@ export default function App() {
       // Always mark as completed regardless of whether doc exists to allow saving new users
       hasInitialLoadCompleted.current = true;
     }, (error) => {
-      console.error("Erro na sincronização de perfil:", error);
+      handleFirestoreError(error, OperationType.GET, `users/${userId}`);
       hasInitialLoadCompleted.current = true; 
     });
     unsubs.push(profileUnsub);
@@ -560,7 +918,7 @@ export default function App() {
          });
          batch.commit();
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/quests`));
     unsubs.push(questsUnsub);
 
     // Meals Sync
@@ -568,7 +926,7 @@ export default function App() {
       const mealsData = snap.docs.map(d => d.data() as Meal);
       mealsData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setMeals(mealsData);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/meals`));
     unsubs.push(mealsUnsub);
 
     // Challenges Sync
@@ -589,7 +947,7 @@ export default function App() {
          });
          batch.commit();
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/challenges`));
     unsubs.push(challengesUnsub);
 
     // Workout History Sync
@@ -597,8 +955,30 @@ export default function App() {
       const historyData = snap.docs.map(d => d.data() as WorkoutLog);
       historyData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setWorkoutHistory(historyData);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/workout_history`));
     unsubs.push(historyUnsub);
+
+    // Friends Sync
+    const friendsUnsub = onSnapshot(collection(db, 'users', userId, 'friends'), (snap) => {
+      const friendsData = snap.docs.map(d => d.data() as Friend);
+      setFriends(friendsData);
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/friends`));
+    unsubs.push(friendsUnsub);
+
+    // Friend Requests Sync
+    const requestsUnsub = onSnapshot(collection(db, 'users', userId, 'friend_requests'), (snap) => {
+      const requestsData = snap.docs.map(d => d.data() as FriendRequest);
+      setFriendRequests(requestsData);
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/friend_requests`));
+    unsubs.push(requestsUnsub);
+
+    // Walking History Sync
+    const walkingUnsub = onSnapshot(collection(db, 'users', userId, 'walking_history'), (snap) => {
+      const walkingData = snap.docs.map(d => d.data() as WalkingLog);
+      walkingData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setWalkingHistory(walkingData);
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/walking_history`));
+    unsubs.push(walkingUnsub);
 
     return () => {
       unsubs.forEach(unsub => unsub());
@@ -794,7 +1174,7 @@ export default function App() {
     }));
   };
 
-  const addMeal = (name: string, calories: number, protein: number, type: Meal['type']) => {
+  const addMeal = (name: string, calories: number, protein: number, type: Meal['type'], recipe?: string) => {
     const newMeal: Meal = {
       id: Math.random().toString(36).substr(2, 9),
       name,
@@ -802,11 +1182,38 @@ export default function App() {
       protein,
       type,
       timestamp: new Date().toISOString(),
+      recipe
     };
     setMeals(prev => [newMeal, ...prev]);
     if (user) {
       withFirestoreRetry(() => setDoc(doc(db, 'users', user.userId, 'meals', newMeal.id), newMeal));
     }
+  };
+
+  const handleUpdateGoal = (goal: HunterStatus['goal']) => {
+    setStatus(prev => ({ ...prev, goal }));
+  };
+
+  const handleLogWalking = (km: number) => {
+    if (!user?.userId) return;
+    const xpReward = Math.floor(km * 200);
+    const newLog: WalkingLog = {
+      id: `walk-${Date.now()}`,
+      distance: km,
+      timestamp: new Date().toISOString(),
+      xpEarned: xpReward
+    };
+
+    // Update global status (XP and level up logic is already elsewhere but we can trigger it here)
+    setStatus(s => {
+      const newXp = s.xp + xpReward;
+      return { ...s, xp: newXp };
+    });
+
+    withFirestoreRetry(() => setDoc(doc(db, 'users', user.userId, 'walking_history', newLog.id), newLog))
+      .catch(err => console.error("Erro ao salvar log de caminhada:", err));
+    
+    alert(`Patrulha finalizada! +${xpReward} XP por percorrer ${km} km.`);
   };
 
   const removeMeal = (id: string) => {
@@ -1031,6 +1438,73 @@ export default function App() {
     });
   };
 
+  const sendFriendRequest = async (targetId: string) => {
+    if (!user?.userId || !targetId || targetId === user.userId) return false;
+    const sanitizedId = targetId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    
+    const requestId = `req-${Date.now()}-${user.userId}`;
+    const request: FriendRequest = {
+      id: requestId,
+      fromUserId: user.userId,
+      fromName: status.name,
+      toUserId: sanitizedId,
+      status: 'pending',
+      timestamp: new Date().toISOString()
+    };
+    
+    try {
+      // Check if user exists
+      const userSnap = await withFirestoreRetry(() => getDoc(doc(db, 'users', sanitizedId)));
+      if (!userSnap.exists()) {
+        throw new Error("Caçador não encontrado.");
+      }
+
+      await withFirestoreRetry(() => setDoc(doc(db, 'users', sanitizedId, 'friend_requests', requestId), request));
+      return true;
+    } catch (e: any) {
+      console.error("Error sending request:", e);
+      alert(e.message || "Erro ao enviar pedido.");
+      return false;
+    }
+  };
+
+  const acceptFriendRequest = async (request: FriendRequest) => {
+    if (!user?.userId) return;
+    
+    try {
+      const friendSnap = await withFirestoreRetry(() => getDoc(doc(db, 'users', request.fromUserId)));
+      const friendData = friendSnap.exists() ? friendSnap.data() as HunterStatus : null;
+      
+      const friendEntry: Friend = {
+        userId: request.fromUserId,
+        name: request.fromName,
+        level: friendData?.level || 1,
+        currentTitleId: friendData?.currentTitleId || 'none',
+        stats: friendData?.stats || INITIAL_STATUS.stats
+      };
+
+      await withFirestoreRetry(() => setDoc(doc(db, 'users', user.userId, 'friends', request.fromUserId), friendEntry));
+      
+      const myEntry: Friend = {
+        userId: user.userId,
+        name: status.name,
+        level: status.level,
+        currentTitleId: status.currentTitleId,
+        stats: status.stats
+      };
+      await withFirestoreRetry(() => setDoc(doc(db, 'users', request.fromUserId, 'friends', user.userId), myEntry));
+
+      await withFirestoreRetry(() => deleteDoc(doc(db, 'users', user.userId, 'friend_requests', request.id)));
+    } catch (e) {
+      console.error("Error accepting request:", e);
+    }
+  };
+
+  const declineFriendRequest = async (requestId: string) => {
+    if (!user?.userId) return;
+    await withFirestoreRetry(() => deleteDoc(doc(db, 'users', user.userId, 'friend_requests', requestId)));
+  };
+
   const renderIcon = (iconName: string, size = 20) => {
     switch (iconName) {
       case 'Milk': return <Milk size={size} />;
@@ -1121,6 +1595,31 @@ export default function App() {
               </button>
 
               <button 
+                onClick={() => setShowSocialModal(true)}
+                className="px-4 py-1.5 bg-blue-600/20 border border-blue-500/50 rounded-lg text-[10px] text-blue-400 font-black uppercase italic tracking-tighter hover:bg-blue-600/40 transition-all flex items-center gap-2 group shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+              >
+                <Users size={14} className="group-hover:scale-110 transition-transform" /> Arise Social
+                {friendRequests.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 text-[8px] items-center justify-center text-white">{friendRequests.length}</span>
+                  </span>
+                )}
+              </button>
+
+              <button 
+                onClick={() => setActiveView(prev => prev === 'dashboard' ? 'kitchen' : 'dashboard')}
+                className={`px-4 py-1.5 border rounded-lg text-[10px] font-black uppercase italic tracking-tighter transition-all flex items-center gap-2 group ${
+                  activeView === 'kitchen' 
+                    ? 'bg-amber-600 text-white border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]' 
+                    : 'bg-amber-600/20 border-amber-500/50 text-amber-500 hover:bg-amber-600/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                }`}
+              >
+                {activeView === 'kitchen' ? <Home size={14} /> : <Utensils size={14} />}
+                {activeView === 'kitchen' ? 'Sair da Cozinha' : 'Cozinha do Monarca'}
+              </button>
+
+              <button 
                 onClick={handleLogout}
                 className="ml-auto p-2 hover:bg-white/5 rounded-full text-slate-500 hover:text-rose-500 transition-all"
                 title="Sair do Sistema"
@@ -1167,7 +1666,8 @@ export default function App() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* STATS PANEL */}
-        <aside className="lg:col-span-4 flex flex-col gap-6">
+        {activeView === 'dashboard' && (
+          <aside className="lg:col-span-4 flex flex-col gap-6">
           <section className="system-window relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-2 opacity-5">
               <Zap size={100} />
@@ -1311,11 +1811,13 @@ export default function App() {
             )}
           </section>
         </aside>
+        )}
 
-        {/* QUESTS AND WORKOUT */}
-        <main className="lg:col-span-8 flex flex-col gap-6">
-          
-          {/* DAILY QUESTS */}
+        {/* MAIN CONTENT AREA */}
+        <main className={`${activeView === 'dashboard' ? 'lg:col-span-8' : 'lg:col-span-12'} flex flex-col gap-6`}>
+          {activeView === 'dashboard' ? (
+            <>
+              {/* DAILY QUESTS */}
           <section className="system-window !border-system-purple relative overflow-hidden group">
             {/* Background Accent */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-system-purple/5 blur-[80px] -z-10" />
@@ -1555,17 +2057,29 @@ export default function App() {
           </AnimatePresence>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-            <NutritionSection 
-              meals={meals} 
-              onAddMeal={addMeal} 
-              onRemoveMeal={removeMeal} 
-            />
+            <WalkingSection onLogWalking={handleLogWalking} history={walkingHistory} />
             <DungeonsSection 
               challenges={challenges} 
               onToggle={toggleChallenge} 
             />
           </div>
-        </main>
+        </>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full"
+          >
+            <NutritionSection 
+              meals={meals} 
+              goal={status.goal}
+              onAddMeal={addMeal} 
+              onRemoveMeal={removeMeal} 
+              onUpdateGoal={handleUpdateGoal}
+            />
+          </motion.div>
+        )}
+      </main>
       </div>
 
       {/* FOOTER */}
@@ -2486,7 +3000,216 @@ export default function App() {
             </div>
           </motion.div>
         )}
+
+        {/* SOCIAL MODAL */}
+        <AnimatePresence>
+          {showSocialModal && (
+            <SocialModal 
+              friends={friends}
+              requests={friendRequests}
+              onClose={() => setShowSocialModal(false)}
+              onSendRequest={sendFriendRequest}
+              onAccept={acceptFriendRequest}
+              onDecline={declineFriendRequest}
+            />
+          )}
+        </AnimatePresence>
       </AnimatePresence>
+    </div>
+  );
+}
+
+function SocialModal({ 
+  friends, 
+  requests, 
+  onClose, 
+  onSendRequest, 
+  onAccept, 
+  onDecline 
+}: { 
+  friends: Friend[]; 
+  requests: FriendRequest[]; 
+  onClose: () => void;
+  onSendRequest: (id: string) => Promise<boolean>;
+  onAccept: (req: FriendRequest) => void;
+  onDecline: (id: string) => void;
+}) {
+  const [searchId, setSearchId] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!searchId) return;
+    setIsSending(true);
+    const success = await onSendRequest(searchId);
+    if (success) {
+      setSearchId('');
+      alert("Pedido de amizade enviado!");
+    }
+    setIsSending(false);
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[100] p-4"
+      onClick={onClose}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-slate-900 border border-system-blue rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-3">
+            <Users size={24} className="text-system-blue" />
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Social Arise</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={24} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-8 pr-2 custom-scrollbar">
+          {/* SEARCH SECTION */}
+          <section>
+            <h3 className="text-xs text-slate-500 uppercase font-black tracking-widest mb-3">Encontrar Outros Caçadores</h3>
+            <div className="flex gap-2">
+              <input 
+                type="text"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                placeholder="Digite o Codinome (ID) do seu amigo..."
+                className="flex-1 bg-black/40 border border-slate-800 rounded px-4 py-2 text-sm focus:border-system-blue outline-none text-white italic"
+              />
+              <button 
+                onClick={handleSend}
+                disabled={isSending || !searchId}
+                className="px-6 py-2 bg-system-blue text-white text-xs font-black uppercase italic rounded hover:bg-blue-500 disabled:opacity-50 transition-all"
+              >
+                {isSending ? 'Sincronizando...' : 'Enviar Pedido'}
+              </button>
+            </div>
+            <p className="text-[9px] text-slate-600 mt-2 uppercase font-bold italic">Dica: Peça ao seu amigo o Codinome que aparece no topo da tela dele.</p>
+          </section>
+
+          {/* REQUESTS SECTION */}
+          {requests.length > 0 && (
+            <section>
+              <h3 className="text-xs text-rose-500 uppercase font-black tracking-widest mb-3 flex items-center gap-2">
+                <Bell size={14} /> Pedidos de Sincronização ({requests.length})
+              </h3>
+              <div className="space-y-2">
+                {requests.map(req => (
+                  <div key={`req-${req.id}`} className="bg-rose-500/5 border border-rose-500/20 rounded-lg p-3 flex justify-between items-center">
+                    <div>
+                      <div className="text-sm font-black text-rose-400 italic">{req.fromName}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">Enviou um pedido de conexão</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => onAccept(req)}
+                        className="px-3 py-1 bg-rose-600 text-white text-[10px] font-black uppercase rounded hover:bg-rose-500"
+                      >
+                        Aceitar
+                      </button>
+                      <button 
+                        onClick={() => onDecline(req.id)}
+                        className="px-3 py-1 bg-slate-800 text-slate-400 text-[10px] font-black uppercase rounded hover:bg-slate-700"
+                      >
+                        Recusar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* FRIENDS SECTION */}
+          <section>
+            <h3 className="text-xs text-system-blue uppercase font-black tracking-widest mb-3">Seus Companheiros de Treino ({friends.length})</h3>
+            {friends.length === 0 ? (
+              <div className="text-center py-8 border border-dashed border-slate-800 rounded-lg">
+                <p className="text-slate-600 text-xs italic uppercase">Nenhum caçador conectado ainda.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {friends.map(friend => (
+                  <div key={`friend-${friend.userId}`}>
+                    <FriendCard friend={friend} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function FriendCard({ friend }: { friend: Friend }) {
+  const [liveData, setLiveData] = useState<HunterStatus | null>(null);
+
+  useEffect(() => {
+    // Listen to friend's live data
+    const path = `users/${friend.userId}`;
+    const unsub = onSnapshot(doc(db, 'users', friend.userId), (snap) => {
+      if (snap.exists()) {
+        setLiveData(snap.data() as HunterStatus);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, path));
+    return () => unsub();
+  }, [friend.userId]);
+
+  const displayData = liveData || {
+    name: friend.name,
+    level: friend.level,
+    currentTitleId: friend.currentTitleId,
+    stats: friend.stats
+  };
+
+  const currentTitle = TITLES.find(t => t.id === displayData.currentTitleId) || TITLES[0];
+
+  return (
+    <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 hover:border-system-blue/50 transition-all group">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-black rounded-lg border border-slate-700 flex items-center justify-center relative overflow-hidden group-hover:border-system-blue/50">
+             <span className="text-xl font-black text-system-blue drop-shadow-[0_0_8px_rgba(30,144,255,0.4)]">{displayData.name[0].toUpperCase()}</span>
+             <div className="absolute inset-0 bg-gradient-to-br from-system-blue/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-white font-black italic uppercase text-lg group-hover:text-system-blue transition-colors tracking-tighter">{displayData.name}</span>
+              <span className="text-system-blue text-[10px] font-black bg-system-blue/10 px-1.5 rounded border border-system-blue/20">Lvl.{displayData.level}</span>
+            </div>
+            <div className={`text-[10px] font-black uppercase italic flex items-center gap-1 ${currentTitle.color || 'text-slate-500'}`}>
+              <Award size={10} /> {currentTitle.name}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex flex-col items-end">
+           <div className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Poder Total</div>
+           <div className="text-xl font-black text-white italic tracking-tighter">{(displayData as any).stats?.total || 0}</div>
+        </div>
+      </div>
+      
+      {/* Stats Breakdown Mini-Bar */}
+      <div className="mt-4 grid grid-cols-6 gap-0.5 opacity-50 hover:opacity-100 transition-opacity">
+         {['peito', 'triceps', 'costas', 'biceps', 'ombro', 'perna'].map((stat) => {
+            const val = (displayData as any).stats?.[stat] || 0;
+            const max = (displayData as any).stats?.total || 1;
+            const percent = (val / max) * 100;
+            return (
+              <div key={stat} className="h-1 bg-slate-900 rounded-full overflow-hidden" title={`${stat}: ${val}`}>
+                 <div className="h-full bg-system-blue" style={{ width: `${Math.min(100, Math.max(5, percent))}%` }} />
+              </div>
+            );
+         })}
+      </div>
     </div>
   );
 }
